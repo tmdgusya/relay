@@ -51,6 +51,7 @@ func initialModel() model {
 	ta.SetWidth(30)
 	ta.SetHeight(3)
 	ta.ShowLineNumbers = true
+	ta.KeyMap.InsertNewline.SetEnabled(true)
 
 	vp := viewport.New(30, 5)
 	vp.SetContent("Chat successfully initialized. Type a message below.")
@@ -79,11 +80,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+enter", "shift+enter":
+			m.textarea.SetValue(m.textarea.Value() + "\n")
+		}
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
 		case tea.KeyUp:
 			m.viewport.ScrollUp(1)
+		case tea.KeyDown:
+			m.viewport.ScrollDown(1)
 		case tea.KeyEnter:
 			if m.cliLoading {
 				return m, nil
