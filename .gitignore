@@ -39,6 +39,9 @@ __debug_bin
 
 # Air - live reload for Go apps
 tmp/
+.gocache/
+.gomodcache/
+.vibe/
 
 # Environment variables
 .env
