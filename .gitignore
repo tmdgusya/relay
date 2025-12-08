@@ -83,3 +83,6 @@ crash.log
 # Temporary files
 *.tmp
 *.temp
+
+# ChatHistory files
+*.db

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -33,16 +35,22 @@ var (
 
 type errMsg error
 type cliResponseMsg string
+type pipeMsg string
+type pipeCloseMsg struct{}
 
 type model struct {
 	viewport   viewport.Model
 	textarea   textarea.Model
+	storage    Storage
 	messages   []string
+	pipe       <-chan string
 	cliLoading bool
 	err        error
+	currentId  uint32
 }
 
 func initialModel() model {
+	pipe := make(chan string, 10)
 	ta := textarea.New()
 	ta.Placeholder = "Enter your message here"
 	ta.Focus()
@@ -56,17 +64,68 @@ func initialModel() model {
 	vp := viewport.New(30, 5)
 	vp.SetContent("Chat successfully initialized. Type a message below.")
 
+	storage := &Storage{
+		stdOut: pipe,
+	}
+
+	if err := storage.Initialize(); err != nil {
+		fmt.Println("Error initializing storage:", err)
+	}
+
 	return model{
 		viewport:   vp,
 		textarea:   ta,
 		messages:   []string{},
 		cliLoading: false,
+		storage:    *storage,
+		pipe:       pipe,
 		err:        nil,
+		currentId:  0,
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return textarea.Blink
+	return tea.Batch(
+		textarea.Blink,
+		waitForPipeMsg(m.pipe),
+	)
+}
+
+func waitForPipeMsg(pipe <-chan string) tea.Cmd {
+	return func() tea.Msg {
+		msg, ok := <-pipe
+		if !ok {
+			return pipeCloseMsg{}
+		}
+		return pipeMsg(msg)
+	}
+}
+
+func messagesToContent(messages []string) Content {
+	var tmp strings.Builder
+	for _, message := range messages {
+		tmp.WriteString(message + "\n")
+	}
+
+	content := bytes.NewBufferString(tmp.String())
+	var contentBytes [4096]byte
+	copy(contentBytes[:], content.Bytes())
+
+	return Content{
+		Id:        0,
+		CreatedAt: time.Now().Unix(),
+		UpdatedAt: time.Now().Unix(),
+		Length:    uint16(content.Len()),
+		Content:   contentBytes,
+	}
+}
+
+func saveChatHistoryToFile(id uint32, messages []string, storage *Storage) uint32 {
+	id, err := storage.Store(id, messagesToContent(messages))
+	if err != nil {
+		fmt.Println("Error saving chat history:", err)
+	}
+	return id
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -86,6 +145,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textarea.SetValue(m.textarea.Value() + "\n")
 		}
 		switch msg.Type {
+		case tea.KeyCtrlS:
+			id := saveChatHistoryToFile(m.currentId, m.messages, &m.storage)
+			m.currentId = id
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
 		case tea.KeyUp:
@@ -132,6 +194,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Height = msg.Height - varticalMarginHeight
 
 		m.textarea.SetWidth(msg.Width - 4)
+	case pipeMsg:
+		m.messages = append(m.messages, messageStyle.Render("System : ")+string(msg))
+		m.messages = append(m.messages, "")
+
+		m.viewport.SetContent(strings.Join(m.messages, "\n"))
+		m.viewport.GotoBottom()
+
+		return m, waitForPipeMsg(m.pipe)
 
 	case errMsg:
 		m.err = msg
@@ -168,13 +238,6 @@ func (m model) View() string {
 func runChatCommand(input string) tea.Cmd {
 	return func() tea.Msg {
 		// [실제 연동 방법]
-		// 아래 exec.Command 부분을 실제 사용하려는 툴로 변경하세요.
-		// 예: exec.Command("claude", "--message", input)
-		// 예: exec.Command("gemini", "prompt", input)
-
-		// 여기서는 테스트를 위해 'echo' 명령어로 시뮬레이션합니다.
-		// 실제 AI 툴이 설치되어 있다면 주석을 해제하고 교체하세요.
-
 		// cmd := exec.Command("claude", "p", input) // 예시
 		cmd := exec.Command("echo", "Simulated AI Response to: "+input)
 
