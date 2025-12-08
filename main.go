@@ -81,7 +81,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+enter", "shift+enter":
+		case "ctrl+j", "shift+enter":
+			// shift+enter 가 ctrl+j 로 들어옴
 			m.textarea.SetValue(m.textarea.Value() + "\n")
 		}
 		switch msg.Type {
